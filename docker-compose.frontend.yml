@@ -34,6 +34,7 @@ x-anchors:
     restart: unless-stopped
     networks:
       kobo-fe-network:
+      kobo-be-network:
 
 services:
   kpi:
@@ -45,6 +46,7 @@ services:
           - kpi.internal
           - kobocat.docker.container
           - kobocat.internal
+      kobo-be-network:
 
   worker:
     <<: *django
@@ -65,11 +67,22 @@ services:
   nginx:
     image: nginx:1.27
     hostname: nginx
-    env_file:
+    labels:
+      # Traefik labels for proxy integration
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-proxy"
+      - "traefik.http.routers.kobo.rule=Host(`forms.best.net.ph`) || Host(`data.best.net.ph`) || Host(`enketo.best.net.ph`)"
+      - "traefik.http.routers.kobo.entrypoints=websecure"
+      - "traefik.http.routers.kobo.tls=true"
+      - "traefik.http.routers.kobo.tls.certresolver=cloudflare"
+      - "traefik.http.routers.kobo.service=kobo"
+      - "traefik.http.services.kobo.loadbalancer.server.port=80"
+    env_file:     
       - ../kobo-env/envfiles/domains.txt
       - ../kobo-env/envfiles/databases.txt
       - ../kobo-env/envfiles/django.txt
     environment:
+      - WSGI=uWSGI
       - UWSGI_PASS_TIMEOUT=130
       - TEMPLATED_VAR_REFS=$${PUBLIC_REQUEST_SCHEME} $${INTERNAL_DOMAIN_NAME} $${PUBLIC_DOMAIN_NAME} $${KOBOFORM_PUBLIC_SUBDOMAIN} $${KOBOCAT_PUBLIC_SUBDOMAIN} $${ENKETO_EXPRESS_PUBLIC_SUBDOMAIN}
     volumes:
@@ -85,6 +98,7 @@ services:
         aliases:
           - nginx.internal
           - nginx.docker.container
+      traefik-proxy:
 
   enketo_express:
     image: kobotoolbox/enketo-express-extra-widgets:7.5.1
@@ -100,7 +114,13 @@ services:
         aliases:
           - enketo_express.internal
           - enketo_express.docker.container
+      kobo-be-network:
 
 networks:
   kobo-fe-network:
     driver: bridge
+  kobo-be-network:
+    name: kobobe_kobo-be-network
+    external: true
+  traefik-proxy:
+    external: true
